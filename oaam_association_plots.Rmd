@@ -1,0 +1,80 @@
+---
+title: "oaam_selection_scans_clean"
+output: html_document
+date: "2025-07-25"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## R Markdown
+
+This is an R Markdown document. Markdown is a simple formatting syntax for authoring HTML, PDF, and MS Word documents. For more details on using R Markdown see <http://rmarkdown.rstudio.com>.
+
+When you click the **Knit** button a document will be generated that includes both content as well as the output of any embedded R code chunks within the document. You can embed an R code chunk like this:
+
+```{r}
+library(tidyverse)
+metadata <- read.csv("/path/to/file/oaam_association_metadata.csv", header = TRUE)
+pca <- read_table("/path/to/file/oahu_amakihi_link_pruned.eigenvec", col_names = FALSE)
+eigenval <- scan("/path/to/file/oahu_amakihi_link_pruned.eigenval")
+pca <- pca[,-1]
+# set names
+names(pca)[1] <- "band_number"
+names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
+
+obj<-left_join(pca,metadata, by="band_number") %>% dplyr::select(band_number,PC1,PC2, pos_neg, site) %>% mutate(site=if_else(site=="OPAL","PAL",site)) %>% mutate(site = fct_relevel(site, 
+            "WARI","MKII","MANA",
+            "KAHA","MTK","EKA","PAL"))%>% mutate("Pos/Neg"=pos_neg,"Site"=site, `Pos/Neg`=case_when(`Pos/Neg`=="P"~"Positive",`Pos/Neg`=="N"~"Negative")) %>% ggplot(aes(x=PC1,y=PC2)) + geom_point(aes(color=Site, shape=`Pos/Neg`), size=3) +viridis::scale_color_viridis(discrete = TRUE,option = "C") + theme_bw() + xlab("PC1 (10.2%)") + ylab("PC2 (7.7%)")
+obj
+
+pca <- read_table("/path/to/file/bca_fst_filter.eigenvec", col_names = FALSE)
+eigenval <- scan("/path/to/file/bca_fst_filter.eigenval")
+pca <- pca[,-1]
+# set names
+names(pca)[1] <- "band_number"
+names(pca)[2:ncol(pca)] <- paste0("PC", 1:(ncol(pca)-1))
+
+left_join(pca,metadata, by="band_number") %>% select(band_number,PC1,PC2, pos_neg, site) %>% mutate(site = fct_relevel(site, 
+            "WARI","MKII","MANA",
+            "KAHA","MTK","EKA","OPAL")) %>%mutate("Pos/Neg"=pos_neg,"Site"=site, `Pos/Neg`=case_when(`Pos/Neg`=="P"~"Positive",`Pos/Neg`=="N"~"Negative"))%>%ggplot(aes(x=PC1,y=PC2)) + geom_point(aes(color=Site, shape=`Pos/Neg`), size=2)  +viridis::scale_color_viridis(discrete = TRUE,option = "C") + theme_bw() + xlab("PC1 (50.3%)") + ylab("PC2 (5.7%)")
+
+```
+
+```{r}
+tss_genotype<-read.table("/path/to/file/tss_genotype_per_snp.txt", header=TRUE) %>% dplyr::select(-ensembl_gene_id, -external_gene_name, -type) %>% unique()%>% filter(snp!="simple_7:1059325") %>% left_join(.,key,by="snp") %>% rename(band_number=sample)
+
+tss_prev<-left_join(tss_genotype,metadata,by="band_number") %>% dplyr::select(band_number, snp, genotype, plot_gene_name, site, pos_neg) %>% group_by(plot_gene_name,genotype) %>% summarise(Samples=n(), Positve=sum(pos_neg=="P"),prev=Positve/Samples)
+
+CIs<-binom::binom.confint(tss_prev$Positve,
+                          tss_prev$Samples, methods = "wilson")
+tss_prev<-cbind(tss_prev, CIs[,5:6])
+
+ggplot(data=tss_prev,aes(x = genotype, y = prev)) + 
+    geom_pointrange(aes(ymin = lower, ymax = upper)) + facet_wrap(~plot_gene_name,scales = "free", ncol = 4) +
+  ylab("Proportion Infected") + xlab("Genotype") +
+  coord_cartesian(ylim = c(0,1)) + theme_bw() +
+  theme(strip.text = element_text(
+    size = 6.3),panel.spacing.y = unit(0.5, "lines"))
+
+genotype_per_sample<-read.table("/path/to/file/genotype_per_sample_per_snp.txt",header = TRUE)
+frame<-left_join(genotype_per_sample,metadata,by="band_number") %>% dplyr::select(band_number, rs, Genotype,Ensembl_Gene_ID,Gene_Name,sequence_type,test,site,qPCR_result,pos_neg)
+
+frame <- frame %>% group_by(Gene_Name,Genotype) %>% summarise(Samples=n(), Positve=sum(pos_neg=="P"),prev=Positve/Samples)
+CIs<-binom::binom.confint(frame$Positve,
+                          frame$Samples, methods = "wilson")
+frame<-cbind(frame, CIs[,5:6])
+
+ggplot(data=frame,aes(x = Genotype, y = prev)) + 
+    geom_pointrange(aes(ymin = lower, ymax = upper)) + facet_wrap(~Gene_Name,scales = "free",) +
+  ylab("Proportion Infected") + 
+  coord_cartesian(ylim = c(0,1)) + theme_bw() +
+  theme(strip.text = element_text(
+    size = 6.25),panel.spacing.y = unit(0.5, "lines"))
+
+```
+
+
+
+
